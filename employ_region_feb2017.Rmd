@@ -1,6 +1,8 @@
 ---
 title: "Government Employment Figures by Region"
-output: html_notebook
+output:
+  pdf_document: default
+  html_notebook: default
 ---
 The data set is available from the website [LMIP Gov AU](http://lmip.gov.au/default.aspx?LMIP/Downloads/ABSLabourForceRegion). 
 
