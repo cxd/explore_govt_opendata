@@ -32,7 +32,6 @@ temp <- reshape(data1, idvar=c("Region", "State"), timevar=c("Industry"), direct
 
 
 temp$Location <- paste(temp$State, temp$Region, sep=" ")
-head(temp)
 names(temp)
 colnames(temp) <- c("Region", 
                  "State",
