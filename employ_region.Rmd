@@ -1,0 +1,130 @@
+---
+title: "PCA Analysis of ABS Labour Force per Region"
+output: html_notebook
+---
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+require(ggplot2)
+require(MVN)
+require(scatterD3)
+require(rbokeh)
+```
+
+The data set is available from the website [LMIP Gov AU](http://lmip.gov.au/default.aspx?LMIP/Downloads/ABSLabourForceRegion). 
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+data <- read.csv("data/employment/SA4_regions_feb2017.csv", header=TRUE)
+
+# need to fix the numbers
+for(i in 4:9) {
+  data[,i] <- as.numeric(gsub(",", "", data[,i]))
+}
+
+data1 <- data[,c(1:4)]
+
+colnames(data1) <- c("Region", "State", "Industry", "TotalCount")
+data1 <- data1[data1$Region != "Australia",]
+
+head(data1)
+temp <- reshape(data1, idvar=c("Region", "State"), timevar=c("Industry"), direction="wide")
+
+
+temp$Location <- paste(temp$State, temp$Region, sep=" ")
+names(temp)
+colnames(temp) <- c("Region", 
+                 "State",
+                 "AGRIC_FRST_FISH", 
+                 "MINING",
+                 "MANUF",
+                 "UTILITIES",
+                 "CONSTR",
+                 "WSALE_TRADE",
+                 "RETAIL_TRADE",
+                 "ACC_FOOD_SRV",
+                 "TRNS_POST_WHOUSE",
+                 "INFO_MEDIA_TELEC",
+                 "FIN_INS_SRV",
+                 "RENT_HIRE_RE_SRV",
+                 "PROF_SCI_TECH_SRV",
+                 "ADM_SUP_SRV",
+                 "PADMIN_SAFETY",
+                 "EDU_TRAIN",
+                 "HEALTH_SOC_ASSIST",
+                 "ARTS_REC_SRV",
+                 "OTHER_SRV",
+                 "Location")
+df1 <- data.frame(Location=temp$Location,
+                  temp[,4:ncol(temp)-1])
+
+X <- df1[,2:ncol(df1)]
+X <- scale(X)
+
+row.names(X) <- df1$Location
+df1.prcomp <- princomp(X, cor=TRUE)
+df1.prcomp$var <- df1.prcomp$sdev^2
+```
+
+## Principle components by variance.
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+total <- sum(df1.prcomp$var)
+df1.prcomp$percentVar <- df1.prcomp$var / total
+
+components <- data.frame(component=1:length(df1.prcomp$var), variance=df1.prcomp$var, percent=round(df1.prcomp$percentVar, 4), cumulativePercent=round(cumsum(df1.prcomp$percentVar),4))
+
+components
+```
+
+The first five components explain > 95% of the variation, with the first nine components explaining 99% of the variance.
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+ggplot(components) +
+  geom_bar(aes(x=component,y=percent),stat="identity")
+```
+
+The loadings for each of the industries are shown below.
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+df1.prcomp$loadings
+```
+The following plot provides an ordination of the loadings for locations against the industry weightings as the directions of
+the principle components.
+
+```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
+
+# plot the first two dimensions.
+choices <- c(2,4)
+
+pcobj <- df1.prcomp
+nobs.factor <- sqrt(pcobj$n.obs)
+d <- pcobj$sdev
+u <- sweep(pcobj$scores, 2, 1 / (d * nobs.factor), FUN = '*')
+v <- pcobj$loadings
+df.u <- as.data.frame(sweep(u[,choices], 2, d[choices], FUN='*'))
+ # Directions
+  v <- sweep(v, 2, d, FUN='*')
+  df.v <- as.data.frame(v[, choices])
+
+  names(df.u) <- c('xvar', 'yvar')
+  names(df.v) <- names(df.u)
+ 
+C <- data.frame(x=df.v[,1],
+                y=df.v[,2])
+O <- data.frame(x=rep(0,nrow(C)),
+                y=rep(0,nrow(C)))
+
+
+figure(width=900,height=900) %>%
+  ly_points(x=df.u[,1], y=df.u[,2],
+            alpha=0.5) %>%
+  ly_text(x=df.u[,1], y=df.u[,2],
+          text=rownames(df.u),
+          font_size="10pt") %>%
+  ly_text(x=df.v[,1], y=df.v[,2],
+          text=rownames(df.v), col="red") %>%
+  ly_segments(x0=O$x, y0=O$y,
+              x1=df.v[,1],
+              y1=df.v[,2],
+              col="red")
+```
