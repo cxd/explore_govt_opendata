@@ -1,6 +1,10 @@
 ---
 title: "PCA Analysis of ABS Labour Force per Region"
-output: html_notebook
+output:
+  html_document: default
+  html_notebook: default
+  pdf_document: default
+always_allow_html: yes
 ---
 
 ```{r, echo=FALSE, warning=FALSE, error=FALSE, message=FALSE}
@@ -128,3 +132,146 @@ figure(width=900,height=900) %>%
               y1=df.v[,2],
               col="red")
 ```
+
+
+That there does seem to be some correspondance between regions and certain industries. We have two codings of data, the first is the long coding (in data1) where industry, and totcal count per industry are allocated between rows, and the second is the wide format with counts captured in the columns with each industry. 
+
+We can look at a log linear model for the data set and examine whether there is suggestion to indicate that the interaction between region and industry is signficant.
+
+```{r}
+colnames <- names(data1)
+str(data1)
+```
+We will build a log linear model for this purpose.
+
+```{r}
+attach(data1)
+```
+
+Note no offset is used in the model below as the total count is the only count factor (we are predicting $n_i$ for each region and industry interaction). 
+
+```{r}
+model1 <- glm(TotalCount ~ Region * Industry, family=poisson(link=log))
+summary(model1)
+```
+
+Note that this is the full model, since there is 0 residual deviance. We use the analysis of deviance to determine whether region does provide a significant explanation of deviance.
+
+```{r}
+anova(model1, test="Chisq")
+```
+Examining the p-values above, we can see that all of the terms, region, industry and the interaction term are all significant in accounting for deviance, hence there is evidence to suggest regional influence on the proportions represented within each industry.
+
+This could be accounted for by differences in population as well at such a summary level, although if we inspect the z-values for the coefficients above we can gain some insight into the significance of the individual interactions. These values are useful given the significance of the interaction term as determined from the analysis of deviance above.
+
+The predictive aspect of this model allows for example an industry and region pair to be selected and the expected proportion of the population to be predicted.
+
+For example, demonstrating the fit of the profession "Professional, Scientific and Technical Services" accross several regions :
+
+```{r}
+model2 <- glm(TotalCount ~ Region + Industry, family=poisson(link=log))
+```
+
+```{r}
+subset <- data1[Industry=="Professional, Scientific and Technical Services",]
+detach(data1)
+attach(subset)
+```
+
+```{r}
+p1 <- predict(model1, subset, type="response")
+p2 <- predict(model2, subset, type="response")
+
+plot(TotalCount ~ Region, main="Professional, Scientific and Tech services Count per region")
+points(p1 ~ Region, col="blue")
+points(p2 ~ Region, col="red")
+legend("topleft", legend=c("Observation", "Full model", "Reduced Model"), col=c("black", "blue", "red"), pch=c(1,1,1))
+```
+
+Note however there is a high level of accuracy in the null model, however the reduced model does have lower accuracy.
+
+We can inspect the scaled residuals for the reduced model (although somewhat less effective for the GLM rather than OLS).
+
+```{r}
+par.old <- par(mfrow=c(1,2))
+r <- resid(model2)
+scalefit <- 2*sqrt(fitted(model2))
+plot(r ~ scalefit, ylab="Deviance residuals", xlab="Scaled fitted values")
+
+qqnorm(r)
+qqline(r)
+
+par(par.old)
+
+```
+We can see the normality assumption is violated as there appears to be influential points at the upper and lower ranges. We can check to determine which points may in fact be highly influential.
+
+Using the cooks distance we can look for leverage points.
+
+```{r, fig.height=8, fig.width=8}
+d1 <- cooks.distance(model2)
+d2 <- dffits(model2)
+hat <- hatvalues(model2)
+
+p <- length(model2$coefficients)
+n <- nrow(data1)
+
+h1 <- 2*p/n
+h2 <- 2*p/n
+
+c1 <- qf(0.5,p,n-p)
+
+dt <- -2*sqrt(p/n)
+
+par.old <- par(mfrow=c(3,1))
+plot(diag(hat), type="h", main="Diagonal of Hat values", ylim=c(0, max(c(diag(hat), h1, h2))))
+abline(h=h1, col="red")
+abline(h=h2, col="red")
+plot(d1, type="h", main="Cooks Distance", ylim=c(0,max(d1, c1)))
+abline(h=c1, col="red")
+plot(d2, type="h", main="DFFITS", ylim=c(-1*(max(d2, dt)), max(d2, dt)))
+abline(h=-dt, col="red")
+abline(h=dt, col="red")
+
+```
+Based on cooks distance alone it appears that there are a large number of leverage points, however the dffits may be a more reasonable heuristic to look for leverage points. We can select these as follows.
+
+```{r}
+test <- which(abs(d2) > abs(dt))
+data1[test,]
+```
+
+Note that the data points selected via the DFFITS measure (difference in the fitted value standardised), gives some sense as to which combinations of regions and industries can be considered leverage points in the data set. There are a number of possibilities for this, among them the total count for the region and industry pair is very high or very low. 
+
+These points may also correspond to the PCA ordination as being at the extremes of each of the principle components, although visual inspection may be required to confirm this intuition.
+
+We can also compare to the mean counts per region.
+
+```{r}
+detach(subset)
+```
+
+```{r}
+require(dplyr)
+
+means <- data1 %>%
+  group_by(Region) %>%
+  summarise(MeanTotal=mean(TotalCount))
+means
+
+
+```
+```{r, fig.width=8, fig.height=6}
+temp <- data1[test,]
+temp1 <- merge(means, temp, by="Region")
+
+attach(temp1)
+plot(TotalCount ~ Region, main="Distribution of leverages vs total mean count each regions", las=2)
+points(MeanTotal ~ Region, col="red")
+
+
+```
+This gives some indication of which regions contain leverage points that are below the regional mean and those which are above.
+
+
+
